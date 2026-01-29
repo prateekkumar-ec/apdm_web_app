@@ -12,7 +12,7 @@ dist/
 
 uploads/
 vectorstore/
-
+.coverage
 # Logs
 logs
 *.log
