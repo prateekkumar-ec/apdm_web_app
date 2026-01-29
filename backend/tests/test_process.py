@@ -11,7 +11,7 @@ audio_file_doc = {"file_id": "456", "file_type": "audio", "stored_path": "/fake/
 unsupported_file_doc = {"file_id": "789", "file_type": "txt", "stored_path": "/fake/path.txt"}
 
 # 1️⃣ File not found
-@patch("app.db.mongo.files_collection.find_one")
+@patch("app.api.process.files_collection.find_one")
 def test_file_not_found(mock_find):
     mock_find.return_value = None
     response = client.post("/process/000")
@@ -20,8 +20,8 @@ def test_file_not_found(mock_find):
 
 # 2️⃣ PDF file
 @patch("app.api.process.extract_text_from_pdf")
-@patch("app.db.mongo.update_file_text")
-@patch("app.db.mongo.files_collection.find_one")
+@patch("app.api.process.update_file_text")
+@patch("app.api.process.files_collection.find_one")
 def test_pdf_file(mock_find, mock_update, mock_extract):
     mock_find.return_value = pdf_file_doc
     mock_extract.return_value = "Extracted PDF text"
@@ -35,8 +35,8 @@ def test_pdf_file(mock_find, mock_update, mock_extract):
 
 # 3️⃣ Audio/Video file
 @patch("app.api.process.transcribe_audio")
-@patch("app.db.mongo.update_file_text")
-@patch("app.db.mongo.files_collection.find_one")
+@patch("app.api.process.update_file_text")
+@patch("app.api.process.files_collection.find_one")
 def test_audio_file(mock_find, mock_update, mock_transcribe):
     mock_find.return_value = audio_file_doc
     mock_transcribe.return_value = "Transcribed audio text"
@@ -49,7 +49,7 @@ def test_audio_file(mock_find, mock_update, mock_transcribe):
     mock_update.assert_called_once_with("456", "Transcribed audio text")
 
 # 4️⃣ Unsupported file type
-@patch("app.db.mongo.files_collection.find_one")
+@patch("app.api.process.files_collection.find_one")
 def test_unsupported_file_type(mock_find):
     mock_find.return_value = unsupported_file_doc
     response = client.post("/process/789")

@@ -12,7 +12,7 @@ processed_file = {"file_id": "123", "extracted_text": "Hello world"}
 # ---------------------------
 # 1️⃣ File not processed
 # ---------------------------
-@patch("app.db.mongo.files_collection.find_one")
+@patch("app.api.qa.files_collection.find_one")
 def test_file_not_processed(mock_find):
     mock_find.return_value = None
     response = client.post("/qa", json={"file_id": "999", "question": "What is this?"})
@@ -23,9 +23,9 @@ def test_file_not_processed(mock_find):
 # ---------------------------
 # 2️⃣ Vectorstore exists
 # ---------------------------
-@patch("app.db.mongo.files_collection.find_one")
-@patch("app.db.vector_store.load_vectorstore")
-@patch("app.db.vector_store.save_vectorstore")
+@patch("app.api.qa.files_collection.find_one")
+@patch("app.api.qa.vector_store.load_vectorstore")
+@patch("app.api.qa.vector_store.save_vectorstore")
 @patch("app.api.qa.ConversationalRetrievalChain.from_llm")
 def test_vectorstore_exists(mock_chain, mock_save, mock_load, mock_find):
     mock_find.return_value = processed_file
@@ -48,9 +48,9 @@ def test_vectorstore_exists(mock_chain, mock_save, mock_load, mock_find):
 # ---------------------------
 # 3️⃣ Vectorstore does NOT exist → create_docs + FAISS
 # ---------------------------
-@patch("app.db.mongo.files_collection.find_one")
-@patch("app.db.vector_store.load_vectorstore")
-@patch("app.db.vector_store.save_vectorstore")
+@patch("app.api.qa.files_collection.find_one")
+@patch("app.api.qa.load_vectorstore")
+@patch("app.api.qa.save_vectorstore")
 @patch("app.services.document_processor.create_docs")
 @patch("app.api.qa.FAISS.from_documents")
 @patch("app.api.qa.ConversationalRetrievalChain.from_llm")
