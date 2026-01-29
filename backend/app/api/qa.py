@@ -3,9 +3,8 @@ from pydantic import BaseModel
 from app.db.mongo import files_collection
 from app.db.vector_store import embeddings, save_vectorstore, load_vectorstore
 from app.services.document_processor import create_docs
-from langchain.chains.question_answering import load_qa_chain
-from langchain.llms import OpenAI
-from langchain.vectorstores import FAISS
+from langchain_community.llms import OpenAI
+from langchain_community.vectorstores import FAISS
 from app.core.config import OPENAI_API_KEY
 from langchain.chains import ConversationalRetrievalChain
 from langchain.memory import ConversationBufferMemory

@@ -3,7 +3,7 @@ from fastapi.testclient import TestClient
 from unittest.mock import patch, MagicMock
 from app.main import app
 from app.api.qa import current_file_id, current_memory, get_memory_for_file
-
+from unittest import mock
 client = TestClient(app)
 
 # Mock processed file
@@ -24,8 +24,8 @@ def test_file_not_processed(mock_find):
 # 2️⃣ Vectorstore exists
 # ---------------------------
 @patch("app.api.qa.files_collection.find_one")
-@patch("app.api.qa.vector_store.load_vectorstore")
-@patch("app.api.qa.vector_store.save_vectorstore")
+@patch("app.api.qa.load_vectorstore")
+@patch("app.api.qa.save_vectorstore")
 @patch("app.api.qa.ConversationalRetrievalChain.from_llm")
 def test_vectorstore_exists(mock_chain, mock_save, mock_load, mock_find):
     mock_find.return_value = processed_file
@@ -48,14 +48,15 @@ def test_vectorstore_exists(mock_chain, mock_save, mock_load, mock_find):
 # ---------------------------
 # 3️⃣ Vectorstore does NOT exist → create_docs + FAISS
 # ---------------------------
+@patch("app.api.qa.get_memory_for_file")
 @patch("app.api.qa.files_collection.find_one")
 @patch("app.api.qa.load_vectorstore")
 @patch("app.api.qa.save_vectorstore")
-@patch("app.services.document_processor.create_docs")
+@patch("app.api.qa.create_docs")
 @patch("app.api.qa.FAISS.from_documents")
 @patch("app.api.qa.ConversationalRetrievalChain.from_llm")
 def test_vectorstore_not_exists(
-    mock_chain, mock_faiss, mock_create_docs, mock_save, mock_load, mock_find
+    mock_chain, mock_faiss, mock_create_docs, mock_save, mock_load, mock_find, mock_get_memory
 ):
     # File is processed
     mock_find.return_value = processed_file
@@ -74,6 +75,8 @@ def test_vectorstore_not_exists(
     mock_chain_instance = MagicMock()
     mock_chain_instance.run.return_value = "Answer from LLM"
     mock_chain.return_value = mock_chain_instance
+    mock_get_memory.return_value = MagicMock()
+
 
     # Call endpoint
     response = client.post("/qa", json={"file_id": "123", "question": "Hello?"})
@@ -82,7 +85,7 @@ def test_vectorstore_not_exists(
     assert response.status_code == 200
     assert response.json() == {"answer": "Answer from LLM"}
     mock_create_docs.assert_called_once_with("Hello world")
-    mock_faiss.assert_called_once_with(mock_docs, patch("app.db.vector_store.embeddings"))
+    mock_faiss.assert_called_once_with(mock_docs, mock.ANY)
     mock_save.assert_called_once_with(mock_vectorstore, file_id="123")
     mock_chain.assert_called_once()
 
