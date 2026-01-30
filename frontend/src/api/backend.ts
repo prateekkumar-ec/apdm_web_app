@@ -1,7 +1,8 @@
 import axios from "axios";
+import ENV from "../config/env.config";
 
 const backend = axios.create({
-  baseURL: "http://127.0.0.1:8000", // FastAPI backend
+  baseURL: ENV.API_BASE_URL,
 });
 
 export default backend;
