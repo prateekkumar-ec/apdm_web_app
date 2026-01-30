@@ -8,13 +8,23 @@ export default function App() {
   const [fileName, setFileName] = useState<string>("");
   const [fileType, setFileType] = useState<string>("");
   const [isProcessing, setIsProcessing] = useState<boolean>(false);
+  const [processingError, setProcessingError] = useState<{ error: boolean; message: string }>({ error: false, message: "" });
 
   const handleSelectFile = (id: string, name: string, type: string, processing: boolean = false) => {
+    const isNewFile = id !== fileId;
+    console.log("Selected file:", { id, fileId, name, type, processing, isNewFile });
+
     setFileId(id);
     setFileName(name);
     setFileType(type);
     setIsProcessing(processing);
+
+    // ✅ clear error ONLY when a new processing starts
+    if (processing) {
+      setProcessingError({ error: false, message: "" });
+    }
   };
+
 
   return (
     <div style={{ padding: "20px", height: "100vh", display: "flex", flexDirection: "column" }}>
@@ -47,6 +57,7 @@ export default function App() {
             isProcessing={isProcessing}
             onProcessingComplete={() => setIsProcessing(false)}
             onFileSelect={handleSelectFile}
+            processingError={processingError}
           />
         </div>
 
@@ -59,7 +70,7 @@ export default function App() {
             overflow: "hidden",
           }}
         >
-          <FileList onSelectFile={handleSelectFile} currentFileId={fileId} />
+          <FileList onSelectFile={handleSelectFile} currentFileId={fileId} setProcessingError={setProcessingError} />
         </div>
       </div>
     </div>

@@ -1,5 +1,6 @@
 import { useState, useRef, useEffect } from "react";
 import backend from "../api/backend";
+import ENV from "../config/env.config";
 
 interface ChatbotProps {
   fileId: string;
@@ -8,15 +9,24 @@ interface ChatbotProps {
   isProcessing: boolean;
   onProcessingComplete: () => void;
   onFileSelect: (fileId: string, fileName: string, fileType: string, processing: boolean) => void;
+  processingError: { error: boolean; message: string };
 }
 
 interface Message {
   type: "user" | "bot";
   text: string;
-  timestamp?: number;
+  playlist?: { start: number; end: number; text: string }[];
 }
 
-export default function Chatbot({ fileId, fileName, fileType, isProcessing, onProcessingComplete, onFileSelect }: ChatbotProps) {
+export default function Chatbot({
+  fileId,
+  fileName,
+  fileType,
+  isProcessing,
+  onProcessingComplete,
+  onFileSelect,
+  processingError,
+}: ChatbotProps) {
   const [question, setQuestion] = useState("");
   const [messages, setMessages] = useState<Message[]>([]);
   const [loading, setLoading] = useState(false);
@@ -46,6 +56,7 @@ export default function Chatbot({ fileId, fileName, fileType, isProcessing, onPr
   }, [fileId]);
 
   useEffect(() => {
+    console.log({ isProcessing, processingMessageShown, processingError });
     // Show processing message
     if (isProcessing && !processingMessageShown) {
       setMessages([
@@ -57,22 +68,33 @@ export default function Chatbot({ fileId, fileName, fileType, isProcessing, onPr
       setProcessingMessageShown(true);
     } else if (!isProcessing && processingMessageShown) {
       // Replace processing message with ready message
-      setMessages([
-        {
-          type: "bot",
-          text: "File processed successfully! You can now ask me questions about the content.",
-        },
-      ]);
+      console.log("Processing complete, updating messages.", processingError);
+      if (processingError.error) {
+        setMessages([
+          {
+            type: "bot",
+            text: `Error processing file: ${processingError.message}`,
+          },
+        ]);
+      } else {
+        setMessages([
+          {
+            type: "bot",
+            text: "File processed successfully! You can now ask me questions about the content.",
+          },
+        ]);
+      }
+      setProcessingMessageShown(false);
       onProcessingComplete();
     }
-  }, [isProcessing, processingMessageShown, onProcessingComplete]);
+  }, [isProcessing, processingMessageShown, onProcessingComplete, processingError]);
 
   useEffect(() => {
     // Load media file if it's audio or video
     if (fileType === "audio" || fileType === "video") {
-      setAudioUrl(`http://127.0.0.1:8000/uploads/${fileName}`);
+      setAudioUrl(`${ENV.API_BASE_URL}/uploads/${fileId}.${fileType === "audio" ? "mp3" : "mp4"}`);
     }
-  }, [fileName, fileType]);
+  }, [fileId, fileType]);
 
   const askQuestion = async () => {
     if (!question.trim()) return;
@@ -96,16 +118,11 @@ export default function Chatbot({ fileId, fileName, fileType, isProcessing, onPr
       const res = await backend.post("/qa", { file_id: fileId, question });
       const answer = res.data.answer;
 
-      // Extract timestamp if present (looking for patterns like "at 1:23" or "timestamp: 1:23")
-      const timestampMatch = answer.match(/(\d+):(\d+)/);
-      let timestamp: number | undefined;
-      if (timestampMatch) {
-        const minutes = parseInt(timestampMatch[1]);
-        const seconds = parseInt(timestampMatch[2]);
-        timestamp = minutes * 60 + seconds;
-      }
-
-      const botMessage: Message = { type: "bot", text: answer, timestamp };
+      const botMessage: Message = {
+        type: "bot",
+        text: answer,
+        playlist: res.data?.timestamps || [],
+      };
       setMessages((prev) => [...prev, botMessage]);
     } catch (err: unknown) {
       const error = err as { response?: { data?: { detail?: string } }; message?: string };
@@ -139,14 +156,40 @@ export default function Chatbot({ fileId, fileName, fileType, isProcessing, onPr
     }
   };
 
-  const playAtTimestamp = (timestamp: number) => {
-    if (fileType === "audio" && audioRef.current) {
-      audioRef.current.currentTime = timestamp;
-      audioRef.current.play();
-    } else if (fileType === "video" && videoRef.current) {
-      videoRef.current.currentTime = timestamp;
-      videoRef.current.play();
-    }
+  const playPlaylist = (playlist: { start: number; end: number }[]) => {
+    if (!playlist.length) return;
+
+    const media = fileType === "video" ? videoRef.current : audioRef.current;
+    if (!media) return;
+
+    let currentClipIndex = 0;
+
+    const playNextClip = () => {
+      if (currentClipIndex >= playlist.length) {
+        media.pause();
+        media.removeEventListener("timeupdate", onTimeUpdate);
+        return;
+      }
+
+      const clip = playlist[currentClipIndex];
+      media.currentTime = clip.start;
+      media.play();
+    };
+
+    const onTimeUpdate = () => {
+      const clip = playlist[currentClipIndex];
+      if (media.currentTime >= clip.end) {
+        currentClipIndex++;
+        playNextClip();
+      }
+    };
+
+    // Clean up any existing listeners before starting a new playlist
+    media.pause();
+    media.removeEventListener("timeupdate", onTimeUpdate);
+    media.addEventListener("timeupdate", onTimeUpdate);
+
+    playNextClip();
   };
 
   const handleKeyPress = (e: React.KeyboardEvent) => {
@@ -180,12 +223,12 @@ export default function Chatbot({ fileId, fileName, fileType, isProcessing, onPr
 
       // Update message to show upload success
       setMessages((prev) => [...prev.slice(0, -1), { type: "bot", text: `File uploaded: ${file.name}. Processing...` }]);
+      onFileSelect(uploadedFileId, uploadedFileName, fileTypeValue, false);
 
       // Process the file
       await backend.post(`/process/${uploadedFileId}`);
 
       // Notify parent component
-      onFileSelect(uploadedFileId, uploadedFileName, fileTypeValue, false);
 
       // Update message to show ready
       setMessages((prev) => [
@@ -221,121 +264,139 @@ export default function Chatbot({ fileId, fileName, fileType, isProcessing, onPr
         height: "100%",
       }}
     >
-        <h2>AI Chatbot</h2>
-        {fileId ? (
-          <>
-            <p>File: {fileName}</p>
-            <p style={{ fontSize: "10px", opacity: "0.8" }}>{fileId}</p>
-          </>
-        ) : (
-          <p style={{ color: "#888", fontSize: "14px" }}>No file selected - Upload or select a file to begin</p>
-        )}
-
+      <div style={{ display: "flex", justifyContent: "space-between" }}>
+        <div>
+          <h2>AI Chatbot</h2>
+          {fileId ? (
+            <>
+              <p>File: {fileName}</p>
+              <p style={{ fontSize: "10px", opacity: "0.8" }}>{fileId}</p>
+            </>
+          ) : (
+            <p style={{ color: "#888", fontSize: "14px" }}>No file selected - Upload or select a file to begin</p>
+          )}
+        </div>
         {/* Media Player */}
         {(fileType === "audio" || fileType === "video") && (
-          <div style={{ marginBottom: "20px", padding: "10px", backgroundColor: "#fff", borderRadius: "5px" }}>
+          <div style={{ backgroundColor: "#fff", borderRadius: "5px" }}>
             <h3>Media Player</h3>
-            {fileType === "audio" && (
-              <audio ref={audioRef} controls style={{ width: "100%" }}>
-                <source src={audioUrl} type="audio/mpeg" />
-              </audio>
-            )}
-            {fileType === "video" && (
-              <video ref={videoRef} controls style={{ width: "100%", maxHeight: "400px" }}>
-                <source src={audioUrl} type="video/mp4" />
-              </video>
-            )}
+            {fileType === "audio" && <audio ref={audioRef} controls style={{ width: "100%" }} src={audioUrl}></audio>}
+            {fileType === "video" && <video ref={videoRef} controls style={{ width: "100%", maxHeight: "120px" }} src={audioUrl} />}
           </div>
         )}
+      </div>
 
-        {/* Summary Section */}
-        <div style={{ marginBottom: "20px" }}>
-          <button onClick={getSummary} disabled={summarizing} style={{ padding: "10px 20px", cursor: "pointer" }}>
-            {summarizing ? "Generating Summary..." : "Get Summary"}
-          </button>
-          {summary && (
-            <div
-              style={{
-                marginTop: "10px",
-                padding: "15px",
-                backgroundColor: "#fff",
-                borderRadius: "5px",
-                border: "1px solid #ddd",
-              }}
-            >
-              <h3>Summary:</h3>
-              <p>{summary}</p>
+      {/* Summary Section */}
+      <div style={{ marginBottom: "20px" }}>
+        <button onClick={getSummary} disabled={summarizing} style={{ padding: "10px 20px", cursor: "pointer" }}>
+          {summarizing ? "Generating Summary..." : "Get Summary"}
+        </button>
+        {summary && (
+          <div
+            style={{
+              marginTop: "10px",
+              padding: "15px",
+              backgroundColor: "#fff",
+              borderRadius: "5px",
+              border: "1px solid #ddd",
+            }}
+          >
+            <h3>Summary:</h3>
+            <p>{summary}</p>
+          </div>
+        )}
+      </div>
+
+      {/* Chat Messages */}
+      <div
+        style={{
+          flex: 1,
+          overflowY: "auto",
+          border: "1px solid #ddd",
+          padding: "10px",
+          backgroundColor: "#fff",
+          borderRadius: "5px",
+          marginBottom: "10px",
+        }}
+      >
+        {messages.length === 0 && (
+          <p style={{ color: "#888" }}>
+            <p>Ask a question about the uploaded file...</p>
+            <div style={{ marginTop: "10px", marginLeft: "20px", fontSize: "12px", color: "#666" }}>
+              <p>Try asking:</p>
+              <ul>
+                <li>"What is this document about?"</li>
+                <li>"Summarize the main points"</li>
+                {(fileType === "audio" || fileType === "video") && <li>"At what timestamp is [topic] discussed?"</li>}
+              </ul>
             </div>
-          )}
-        </div>
-
-        {/* Chat Messages */}
-        <div
-          style={{
-            flex: 1,
-            overflowY: "auto",
-            border: "1px solid #ddd",
-            padding: "10px",
-            backgroundColor: "#fff",
-            borderRadius: "5px",
-            marginBottom: "10px",
-          }}
-        >
-          {messages.length === 0 && (
-            <p style={{ color: "#888" }}>
-              <p>Ask a question about the uploaded file...</p>
-              <div style={{ marginTop: "10px", marginLeft: "20px", fontSize: "12px", color: "#666" }}>
-                <p>Try asking:</p>
-                <ul>
-                  <li>"What is this document about?"</li>
-                  <li>"Summarize the main points"</li>
-                  {(fileType === "audio" || fileType === "video") && <li>"At what timestamp is [topic] discussed?"</li>}
-                </ul>
-              </div>
-            </p>
-          )}
-          {messages.map((msg, idx) => (
+          </p>
+        )}
+        {messages.map((msg, idx) => (
+          <div
+            key={idx}
+            style={{
+              marginBottom: "15px",
+              display: "flex",
+              flexDirection: "column",
+              alignItems: msg.type === "user" ? "flex-end" : "flex-start",
+            }}
+          >
             <div
-              key={idx}
               style={{
-                marginBottom: "15px",
-                display: "flex",
-                flexDirection: "column",
-                alignItems: msg.type === "user" ? "flex-end" : "flex-start",
+                padding: "10px",
+                borderRadius: "5px",
+                backgroundColor: msg.type === "user" ? "#007bff" : "#e9ecef",
+                color: msg.type === "user" ? "#fff" : "#000",
+                maxWidth: "80%",
               }}
             >
-              <div
-                style={{
-                  padding: "10px",
-                  borderRadius: "5px",
-                  backgroundColor: msg.type === "user" ? "#007bff" : "#e9ecef",
-                  color: msg.type === "user" ? "#fff" : "#000",
-                  maxWidth: "80%",
-                }}
-              >
-                <strong>{msg.type === "user" ? "You" : "AI"}:</strong>
-                <p style={{ margin: "5px 0 0 0" }}>{msg.text}</p>
-                {msg.timestamp !== undefined && (fileType === "audio" || fileType === "video") && (
+              <strong>{msg.type === "user" ? "You" : "AI"}:</strong>
+              <p style={{ margin: "5px 0 0 0" }}>{msg.text}</p>
+              {msg.type === "bot" && msg.playlist && msg.playlist.length > 0 && (
+                <div style={{ marginTop: "10px", display: "flex", flexWrap: "wrap", gap: "8px" }}>
+                  {/* Main Play Button */}
                   <button
-                    onClick={() => playAtTimestamp(msg.timestamp!)}
+                    onClick={() => playPlaylist(msg.playlist)}
                     style={{
-                      marginTop: "5px",
-                      padding: "5px 10px",
-                      cursor: "pointer",
-                      backgroundColor: "#28a745",
-                      color: "#fff",
+                      backgroundColor: "#007bff",
+                      color: "white",
                       border: "none",
-                      borderRadius: "3px",
+                      padding: "5px 12px",
+                      borderRadius: "15px",
+                      cursor: "pointer",
+                      fontSize: "12px",
+                      fontWeight: "bold",
                     }}
                   >
-                    ▶ Play at {Math.floor(msg.timestamp / 60)}:{(msg.timestamp % 60).toString().padStart(2, "0")}
+                    ▶ Play Answer Clips
                   </button>
-                )}
-              </div>
+
+                  {/* Individual Snippets */}
+                  {msg.playlist.map((segment, idx) => (
+                    <button
+                      key={idx}
+                      onClick={() => playPlaylist([segment])}
+                      style={{
+                        backgroundColor: "#f0f0f0",
+                        color: "#333",
+                        border: "1px solid #ccc",
+                        padding: "3px 8px",
+                        borderRadius: "4px",
+                        cursor: "pointer",
+                        fontSize: "11px",
+                      }}
+                    >
+                      {segment.start.toFixed(0)}s - {segment.end.toFixed(0)}s
+                    </button>
+                  ))}
+                </div>
+              )}
             </div>
-          ))}
-          {loading && <div style={{ color: "#888", fontStyle: "italic" }}>AI is thinking...</div>}
-        </div>
+          </div>
+        ))}
+        {loading && <div style={{ color: "#888", fontStyle: "italic" }}>AI is thinking...</div>}
+      </div>
 
       {/* Input Section */}
       <div style={{ display: "flex", gap: "10px", alignItems: "center" }}>

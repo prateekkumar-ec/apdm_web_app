@@ -5,6 +5,7 @@ from app.services.transcriber import transcribe_audio
 
 router = APIRouter(prefix="/process", tags=["Process"])
 
+
 @router.post("/{file_id}")
 async def process_file(file_id: str):
     file_doc = files_collection.find_one({"file_id": file_id})
@@ -17,9 +18,16 @@ async def process_file(file_id: str):
     if file_type == "pdf":
         text = extract_text_from_pdf(path)
     elif file_type in ("audio", "video"):
-        text = transcribe_audio(path)
+        transcript = transcribe_audio(path)
+        text = transcript["text"]
+        segments = transcript["segments"]
     else:
         raise HTTPException(status_code=400, detail="Unsupported file type")
 
-    update_file_text(file_id, text)
-    return {"file_id": file_id, "message": "Processing complete"}
+    update_file_text(
+        file_id, text, segments if file_type in ("audio", "video") else None
+    )
+    return {
+        "file_id": file_id,
+        "message": "Processing complete",
+    }

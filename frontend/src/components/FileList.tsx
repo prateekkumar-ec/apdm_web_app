@@ -12,9 +12,10 @@ interface FileItem {
 interface FileListProps {
   onSelectFile: (fileId: string, fileName: string, fileType: string, processing?: boolean) => void;
   currentFileId: string;
+  setProcessingError: React.Dispatch<React.SetStateAction<{error: boolean, message: string}>>;
 }
 
-export default function FileList({ onSelectFile, currentFileId }: FileListProps) {
+export default function FileList({ onSelectFile, currentFileId, setProcessingError }: FileListProps) {
   const [files, setFiles] = useState<FileItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
@@ -35,7 +36,7 @@ export default function FileList({ onSelectFile, currentFileId }: FileListProps)
 
   useEffect(() => {
     fetchFiles();
-  }, []);
+  }, [currentFileId]);
 
   const handleFileClick = async (file: FileItem) => {
     // Get the stored filename from backend
@@ -65,6 +66,8 @@ export default function FileList({ onSelectFile, currentFileId }: FileListProps)
         const error = err as { response?: { data?: { detail?: string } }; message?: string };
         console.error("Error processing file:", error);
         // Still notify completion even on error
+        console.log("Setting processing error", {error: true, message: "Processing error: " + (error.response?.data?.detail || error.message || "Unknown error")});
+        setProcessingError({error: true, message: "Processing error: " + (error.response?.data?.detail || error.message || "File Processing : Unknown error")});
         onSelectFile(file.file_id, fileName, file.file_type, false);
       }
     }
