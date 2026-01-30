@@ -357,7 +357,7 @@ export default function Chatbot({
                 <div style={{ marginTop: "10px", display: "flex", flexWrap: "wrap", gap: "8px" }}>
                   {/* Main Play Button */}
                   <button
-                    onClick={() => playPlaylist(msg.playlist)}
+                    onClick={() => msg.playlist && playPlaylist(msg.playlist)}
                     style={{
                       backgroundColor: "#007bff",
                       color: "white",
