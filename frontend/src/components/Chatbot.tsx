@@ -38,7 +38,15 @@ export default function Chatbot({
   const fileInputRef = useRef<HTMLInputElement>(null);
   const audioRef = useRef<HTMLAudioElement>(null);
   const videoRef = useRef<HTMLVideoElement>(null);
+  const messagesEndRef = useRef<HTMLDivElement>(null);
+  const scrollToBottom = () => {
+    messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
+  };
 
+  useEffect(() => {
+    scrollToBottom();
+  }, [messages]);
+  
   useEffect(() => {
     // Reset messages when file changes
     if (fileId) {
@@ -396,6 +404,7 @@ export default function Chatbot({
           </div>
         ))}
         {loading && <div style={{ color: "#888", fontStyle: "italic" }}>AI is thinking...</div>}
+        <div ref={messagesEndRef} />
       </div>
 
       {/* Input Section */}
