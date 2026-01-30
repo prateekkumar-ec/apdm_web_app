@@ -35,9 +35,6 @@ export default function FileList({ onSelectFile, currentFileId }: FileListProps)
 
   useEffect(() => {
     fetchFiles();
-    // Refresh every 5 seconds
-    const interval = setInterval(fetchFiles, 5000);
-    return () => clearInterval(interval);
   }, []);
 
   const handleFileClick = async (file: FileItem) => {
