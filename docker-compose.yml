@@ -13,7 +13,10 @@ services:
     restart: always
 
   frontend:
-    build: ./frontend
+    build: 
+      context: ./frontend
+      args:
+        - VITE_BACKEND_URL=http://35.225.65.100:8000
     container_name: ai_frontend
     ports:
       - "5173:80"
